@@ -1,58 +1,78 @@
 #!/usr/bin/env python3
-"""A github org client
-"""
+
+""" A github org client """
+import unittest
+from unittest import mock
+from unittest.mock import patch
+from parameterized import parameterized
+from utils import access_nested_map, get_json, memoize
 from typing import (
-    List,
+    Mapping,
+    Sequence,
+    Any,
     Dict,
-)
-
-from utils import (
-    get_json,
-    access_nested_map,
-    memoize,
+    Callable,
 )
 
 
-class GithubOrgClient:
-    """A Githib org client
-    """
-    ORG_URL = "https://api.github.com/orgs/{org}"
+class TestAccessNestedMap(unittest.TestCase):
+    @parameterized.expand([
+        ({"a": 1}, ("a", ), 1),
+        ({"a": {"b": 2}}, ("a", ), {'b': 2}),
+        ({"a": {"b": 2}}, ("a", "b"), 2)])
+    def test_access_nested_map(self, nested_map: Mapping, path: Sequence, expected: any):
+        """test the access_nested_map method of utils"""
+        self.assertEqual(access_nested_map(nested_map, path), expected)
 
-    def __init__(self, org_name: str) -> None:
-        """Init method of GithubOrgClient"""
-        self._org_name = org_name
+    @parameterized.expand([
+        ({}, ("a", )),
+        ({"a": 1}, ("a", "b"))])
+    def test_access_nested_map_exception(self, nested_map: Mapping, path: Sequence):
+        self.assertRaises(KeyError, access_nested_map, nested_map, path)
+
+
+class TestClass:
+
+    def a_method(self):
+        return 42
 
     @memoize
-    def org(self) -> Dict:
-        """Memoize org"""
-        return get_json(self.ORG_URL.format(org=self._org_name))
+    def a_property(self):
+        return self.a_method()
 
-    @property
-    def _public_repos_url(self) -> str:
-        """Public repos URL"""
-        return self.org["repos_url"]
 
-    @memoize
-    def repos_payload(self) -> Dict:
-        """Memoize repos payload"""
-        return get_json(self._public_repos_url)
+class TestMemoize(unittest.TestCase):
 
-    def public_repos(self, license: str = None) -> List[str]:
-        """Public repos"""
-        json_payload = self.repos_payload
-        public_repos = [
-            repo["name"] for repo in json_payload
-            if license is None or self.has_license(repo, license)
-        ]
+    @patch.object(TestClass, 'a_method', return_value=42)
+    def test_memoize(self, mock_a_method):
+        # create an instance of TestClass
+        test_obj = TestClass()
+        # call a_property twice
+        result1 = test_obj.a_property
+        result2 = test_obj.a_property
+        # assert that the correct result is returned
+        self.assertEqual(result1, 42)
+        self.assertEqual(result2, 42)
+        # assert that a_method is only called once
+        mock_a_method.assert_called_once()
 
-        return public_repos
 
-    @staticmethod
-    def has_license(repo: Dict[str, Dict], license_key: str) -> bool:
-        """Static: has_license"""
-        assert license_key is not None, "license_key cannot be None"
-        try:
-            has_license = access_nested_map(repo, ("license", "key")) == license_key
-        except KeyError:
-            return False
-        return has_license
+class TestGetJson(unittest.TestCase):
+
+    @parameterized.expand([
+        ("http://example.com", {"payload": True}),
+        ("http://holberton.io", {"payload": False})
+    ])
+    @patch('requests.get')
+    def test_get_json(self, test_url, test_payload, mock_get):
+        # create a mock response object with a json method that returns test_payload
+        mock_response = unittest.mock.Mock()
+        mock_response.json.return_value = test_payload
+        # set the return value of requests.get to mock_response
+        mock_get.return_value = mock_response
+        # call get_json with test_url
+        result = get_json(test_url)
+        # assert that requests.get is called once with test_url as argument
+        mock_get.assert_called_once_with(test_url)
+        # assert that result is equal to test_payload
+        self.assertEqual(result, test_payload)
